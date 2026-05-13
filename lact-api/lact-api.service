@@ -1,0 +1,13 @@
+[Unit]
+Description=Lact GPU Stats API Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/user1/projects/lact-node/lact-api
+ExecStart=/home/user1/.nvm/versions/node/v22.14.0/bin/node server.js
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
