@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPU Monitor</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#1b1b1b;color:#e0e0e0;font-family:'Fira Code','Cascadia Code','Consolas',monospace;font-size:14px;min-height:100vh;padding:20px}
+  .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:12px;border-bottom:2px solid #333}
+  .header h1{font-size:20px;color:#fff}
+  .header .status{font-size:12px;color:#888}
+  .header .status.online{color:#4caf50}
+  .gpu-card{background:#252525;border:1px solid #333;border-radius:6px;padding:16px;margin-bottom:16px}
+  .gpu-title{font-size:13px;color:#aaa;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #3a3a3a}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+  .stat{background:#2a2a2a;border-radius:4px;padding:10px 12px}
+  .stat-label{color:#888;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px}
+  .stat-value{color:#fff;font-size:15px;font-weight:600}
+  .stat-unit{color:#888;font-size:12px;margin-left:4px;font-weight:400}
+  .temp-warn{color:#ff9800}
+  .temp-crit{color:#f44336}
+  .bar-container{margin-top:6px;background:#1a1a1a;border-radius:3px;height:6px;overflow:hidden}
+  .bar{height:100%;border-radius:3px;transition:width 0.3s ease}
+  .bar-green{background:#4caf50}
+  .bar-yellow{background:#ff9800}
+  .bar-red{background:#f44336}
+  .fan-off{color:#f44336}
+  .fan-on{color:#4caf50}
+  .throttling-yes{color:#f44336}
+  .throttling-no{color:#4caf50}
+  .error-msg{color:#f44336;text-align:center;padding:40px}
+  .refresh-btn{background:#333;color:#e0e0e0;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:12px}
+  .refresh-btn:hover{background:#444}
+  .refresh-btn:active{background:#555}
+  .auto-refresh{display:flex;align-items:center;gap:8px}
+  .loading{text-align:center;padding:60px;color:#888}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>GPU Monitor</h1>
+  <div class="auto-refresh">
+    <span id="statusDot" class="status">Disconnected</span>
+    <button class="refresh-btn" id="refreshBtn" onclick="requestFetch()">Refresh</button>
+  </div>
+</div>
+<div id="content">
+  <div class="loading">Connecting to server...</div>
+</div>
+
+<script>
+const vscode = acquireVsCodeApi();
+let autoRefreshId = null;
+
+function parseGpuData(raw) {
+  const gpus = [];
+  let current = null;
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed === '=====') continue;
+    const gpuMatch = trimmed.match(/^(GPU\s+\S+):$/);
+    if (gpuMatch) {
+      if (current) gpus.push(current);
+      current = { id: gpuMatch[1], stats: {}, raw: '' };
+      continue;
+    }
+    if (current) {
+      const clockMatch = trimmed.match(/GPU Clockspeed:\s*(\d+)\s*(MHz)/i);
+      if (clockMatch) { current.stats.gpuClock = parseInt(clockMatch[1]); current.stats.gpuClockUnit = clockMatch[2]; continue; }
+      const vramClockMatch = trimmed.match(/VRAM Clockspeed:\s*(\d+)\s*(MHz)/i);
+      if (vramClockMatch) { current.stats.vramClock = parseInt(vramClockMatch[1]); current.stats.vramClockUnit = vramClockMatch[2]; continue; }
+      const voltageMatch = trimmed.match(/GPU Voltage:\s*(\d+)\s*(mV)/i);
+      if (voltageMatch) { current.stats.voltage = parseInt(voltageMatch[1]); current.stats.voltageUnit = voltageMatch[2]; continue; }
+      const powerMatch = trimmed.match(/Power Usage:\s*([\d.]+)\s*\/\s*([\d.]+)\s*(W)/i);
+      if (powerMatch) { current.stats.powerUsage = parseFloat(powerMatch[1]); current.stats.powerLimit = parseFloat(powerMatch[2]); current.stats.powerUnit = powerMatch[3]; continue; }
+      const tempMatch = trimmed.match(/Temperatures?:\s*(.*)/i);
+      if (tempMatch) {
+        const temps = {};
+        const parts = tempMatch[1].split(',');
+        for (const part of parts) {
+          const kv = part.split(':');
+          if (kv.length === 2) temps[kv[0].trim()] = parseInt(kv[1].trim());
+        }
+        current.stats.temps = temps;
+        continue;
+      }
+      const vramMatch = trimmed.match(/VRAM Usage:\s*(\d+)\s*\/\s*(\d+)\s*(MiB)/i);
+      if (vramMatch) { current.stats.vramUsed = parseInt(vramMatch[1]); current.stats.vramTotal = parseInt(vramMatch[2]); continue; }
+      const throttleMatch = trimmed.match(/Throttling:\s*(\w+)/i);
+      if (throttleMatch) { current.stats.throttling = throttleMatch[1]; continue; }
+      const fanMatch = trimmed.match(/Fan Speed:\s*(\d+)%?\s*\(?\s*(\d+)\s*(RPM)\)?/i);
+      if (fanMatch) { current.stats.fanPct = parseInt(fanMatch[1]); current.stats.fanRpm = parseInt(fanMatch[2]); continue; }
+      const fanCtrlMatch = trimmed.match(/Fan Control Mode:\s*(.*)/i);
+      if (fanCtrlMatch) { current.stats.fanCtrlMode = fanCtrlMatch[1].trim(); continue; }
+    }
+  }
+  if (current) gpus.push(current);
+  return gpus;
+}
+
+function barColor(pct) {
+  if (pct < 60) return 'bar-green';
+  if (pct < 85) return 'bar-yellow';
+  return 'bar-red';
+}
+
+function tempColor(val) {
+  if (val >= 85) return 'temp-crit';
+  if (val >= 70) return 'temp-warn';
+  return '';
+}
+
+function renderGpus(gpus) {
+  const container = document.getElementById('content');
+  if (!gpus.length) {
+    container.innerHTML = '<div class="error-msg">No GPU data received.</div>';
+    return;
+  }
+  let html = '';
+  for (const gpu of gpus) {
+    const s = gpu.stats;
+    const vramPct = s.vramTotal ? Math.round((s.vramUsed / s.vramTotal) * 100) : 0;
+    const powerPct = s.powerLimit ? Math.round((s.powerUsage / s.powerLimit) * 100) : 0;
+
+    html += `<div class="gpu-card">`;
+    html += `<div class="gpu-title">${gpu.id}</div>`;
+    html += `<div class="grid">`;
+
+    html += `<div class="stat"><div class="stat-label">GPU Clockspeed</div><div class="stat-value">${s.gpuClock||'\u2014'}<span class="stat-unit">${s.gpuClockUnit||'MHz'}</span></div></div>`;
+    html += `<div class="stat"><div class="stat-label">VRAM Clockspeed</div><div class="stat-value">${s.vramClock||'\u2014'}<span class="stat-unit">${s.vramClockUnit||'MHz'}</span></div></div>`;
+    html += `<div class="stat"><div class="stat-label">GPU Voltage</div><div class="stat-value">${s.voltage||'\u2014'}<span class="stat-unit">${s.voltageUnit||'mV'}</span></div></div>`;
+    html += `<div class="stat"><div class="stat-label">Power Usage</div><div class="stat-value">${s.powerUsage||'\u2014'} / ${s.powerLimit||'\u2014'}<span class="stat-unit">${s.powerUnit||'W'}</span></div><div class="bar-container"><div class="bar ${barColor(powerPct)}" style="width:${powerPct}%"></div></div></div>`;
+
+    let tempsHtml = '';
+    if (s.temps) {
+      for (const [label, val] of Object.entries(s.temps)) {
+        tempsHtml += `<span class="${tempColor(val)}">${label}: ${val}\u00b0C</span> &nbsp;`;
+      }
+    }
+    html += `<div class="stat"><div class="stat-label">Temperatures</div><div class="stat-value">${tempsHtml || '\u2014'}</div></div>`;
+    html += `<div class="stat"><div class="stat-label">VRAM Usage</div><div class="stat-value">${s.vramUsed||'\u2014'} / ${s.vramTotal||'\u2014'} <span class="stat-unit">MiB</span></div><div class="bar-container"><div class="bar ${barColor(vramPct)}" style="width:${vramPct}%"></div></div></div>`;
+
+    const throttleClass = s.throttling && s.throttling.toLowerCase() === 'no' ? 'throttling-no' : 'throttling-yes';
+    html += `<div class="stat"><div class="stat-label">Throttling</div><div class="stat-value ${throttleClass}">${s.throttling||'\u2014'}</div></div>`;
+
+    const fanClass = (s.fanPct || 0) === 0 ? 'fan-off' : 'fan-on';
+    html += `<div class="stat"><div class="stat-label">Fan Speed</div><div class="stat-value ${fanClass}">${s.fanPct||0}% (${s.fanRpm||0} RPM)</div></div>`;
+    html += `<div class="stat"><div class="stat-label">Fan Control Mode</div><div class="stat-value">${s.fanCtrlMode||'\u2014'}</div></div>`;
+
+    html += `</div></div>`;
+  }
+  container.innerHTML = html;
+}
+
+function handleData(rawText) {
+  try {
+    const gpus = parseGpuData(rawText);
+    renderGpus(gpus);
+    const dot = document.getElementById('statusDot');
+    dot.textContent = 'Connected';
+    dot.className = 'status online';
+  } catch (err) {
+    const dot = document.getElementById('statusDot');
+    dot.textContent = 'Disconnected';
+    dot.className = 'status';
+    document.getElementById('content').innerHTML = `<div class="error-msg">Failed to parse GPU data.<br><small>${err.message}</small></div>`;
+  }
+}
+
+function handleError(errMsg) {
+  const dot = document.getElementById('statusDot');
+  dot.textContent = 'Disconnected';
+  dot.className = 'status';
+  document.getElementById('content').innerHTML = `<div class="error-msg">Failed to fetch GPU data.<br><small>${errMsg}</small></div>`;
+}
+
+function requestFetch() {
+  vscode.postMessage({ type: 'fetch' });
+}
+
+function startAutoRefresh() {
+  if (autoRefreshId) clearInterval(autoRefreshId);
+  autoRefreshId = setInterval(requestFetch, REFRESH_INTERVAL);
+}
+
+window.addEventListener('message', event => {
+  const msg = event.data;
+  if (msg.type === 'data') {
+    handleData(msg.data);
+  } else if (msg.type === 'error') {
+    handleError(msg.message);
+  } else if (msg.type === 'config') {
+    startAutoRefresh();
+  }
+});
+
+requestFetch();
+startAutoRefresh();
+</script>
+</body>
+</html>

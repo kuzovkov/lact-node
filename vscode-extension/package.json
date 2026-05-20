@@ -1,0 +1,52 @@
+{
+  "name": "gpu-monitor",
+  "displayName": "GPU Monitor",
+  "description": "Monitor GPU stats in VS Code via LACT API",
+  "version": "0.1.1",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": ["*"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gpuMonitor.showDashboard",
+        "title": "GPU Monitor: Show Dashboard",
+        "icon": "$(monitor)"
+      }
+    ],
+    "configuration": [
+      {
+        "title": "GPU Monitor",
+        "properties": {
+          "gpuMonitor.apiUrl": {
+            "type": "string",
+            "default": "http://127.0.0.1:3000/gpu/stat",
+            "description": "URL of the LACT GPU stats API endpoint"
+          },
+          "gpuMonitor.refreshInterval": {
+            "type": "number",
+            "default": 2000,
+            "minimum": 1000,
+            "maximum": 60000,
+            "description": "Auto-refresh interval in milliseconds"
+          }
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@types/vscode": "^1.96.0",
+    "typescript": "^5.7.0"
+  }
+}
