@@ -37,18 +37,20 @@ exports.activate = activate;
 const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const https = __importStar(require("https"));
+const http = __importStar(require("http"));
 let currentPanel;
 let refreshTimer;
 let statusBar;
-let gpuTemp = '';
 function activate(context) {
     statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    statusBar.text = '$(monitor) GPU Monitor';
+    statusBar.text = '$(cpu) GPU';
     statusBar.tooltip = 'Click to open GPU Monitor';
     statusBar.command = 'gpuMonitor.showDashboard';
     statusBar.show();
     context.subscriptions.push(statusBar);
-    context.subscriptions.push(vscode.commands.registerCommand('gpuMonitor.showDashboard', showDashboard));
+    const disposable = vscode.commands.registerCommand('gpuMonitor.showDashboard', showDashboard);
+    context.subscriptions.push(disposable);
 }
 function showDashboard() {
     const config = vscode.workspace.getConfiguration('gpuMonitor');
@@ -74,6 +76,9 @@ function showDashboard() {
             clearInterval(refreshTimer);
             refreshTimer = undefined;
         }
+        if (statusBar) {
+            statusBar.text = '$(cpu) GPU';
+        }
     });
     currentPanel.webview.onDidReceiveMessage((message) => {
         if (message.type === 'fetch') {
@@ -89,33 +94,44 @@ function showDashboard() {
         fetchGpuData(url);
     }, refreshInterval);
 }
-async function fetchGpuData(url) {
+function fetchGpuData(url) {
     if (!currentPanel)
         return;
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        const text = await response.text();
-        currentPanel.webview.postMessage({ type: 'data', data: text });
-        updateStatusBar(text);
-    }
-    catch (err) {
+    const client = url.startsWith('https') ? https : http;
+    client.get(url, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+            if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+                currentPanel.webview.postMessage({ type: 'data', data });
+                updateStatusBar(data);
+            }
+            else {
+                currentPanel.webview.postMessage({
+                    type: 'error',
+                    message: `HTTP ${res.statusCode}`,
+                });
+                if (statusBar) {
+                    statusBar.text = '$(error) GPU';
+                }
+            }
+        });
+    }).on('error', (err) => {
         currentPanel.webview.postMessage({
             type: 'error',
-            message: err instanceof Error ? err.message : String(err),
+            message: err.message,
         });
-        statusBar.text = '$(circle-slash) GPU Monitor';
-        statusBar.tooltip = 'Failed to connect';
-    }
+        if (statusBar) {
+            statusBar.text = '$(error) GPU';
+        }
+    });
 }
 function updateStatusBar(raw) {
     const tempMatch = raw.match(/GPU:\s*(\d+)/i);
-    if (tempMatch) {
-        gpuTemp = tempMatch[1];
-        statusBar.text = `$(monitor) ${gpuTemp}°C`;
-        statusBar.tooltip = `GPU Temp: ${gpuTemp}°C\nClick to open GPU Monitor`;
+    if (tempMatch && statusBar) {
+        const temp = tempMatch[1];
+        statusBar.text = `$(cpu) ${temp}°C`;
+        statusBar.tooltip = `GPU Temp: ${temp}°C\nClick to open GPU Monitor`;
     }
 }
 function getHtmlForWebview(webview, apiUrl, refreshInterval) {

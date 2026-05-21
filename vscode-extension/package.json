@@ -2,14 +2,16 @@
   "name": "gpu-monitor",
   "displayName": "GPU Monitor",
   "description": "Monitor GPU stats in VS Code via LACT API",
-  "version": "0.1.1",
+  "version": "0.1.6",
   "engines": {
     "vscode": "^1.96.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": ["*"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
