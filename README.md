@@ -29,8 +29,66 @@ lact-node/
 ├── dashboard.html         # Styled GPU stats dashboard
 ├── index.html            # Simple terminal-style viewer
 ├── RUNNING_AS_SERVICE.md # systemd service setup guide
+├── vscode-extension/    # VS Code extension for GPU monitoring
+│   ├── src/extension.ts
+│   ├── package.json
+│   └── tsconfig.json
 └── README.md            # This file
+ ```
+
+## VS Code Extension
+
+A VS Code extension is included that provides an in-editor GPU monitoring dashboard.
+
+### Compile the Extension
+
+```bash
+cd vscode-extension
+npm install
+npm run compile
 ```
+
+This will produce `dist/extension.js` (the bundled extension entry point).
+
+### Install the Extension
+
+#### Option 1: Load from VS Code (development)
+
+1. Open the `vscode-extension` folder in VS Code
+2. Press `Ctrl+Shift+D` to open the Run view
+3. Click "Start Debugging" (or press `F5`) — this launches a new VS Code window with the extension loaded
+
+#### Option 2: Install the `.vsix` package
+
+1. Build the `.vsix` file:
+
+   ```bash
+   cd vscode-extension
+   npx vsce package
+   ```
+
+2. Install it in VS Code:
+
+   ```bash
+   code --install-extension gpu-monitor-0.1.6.vsix
+   ```
+
+   Or via the UI: **Extensions** → `⋯` menu → **Install from VSIX…** → select the `.vsix` file.
+
+#### Option 3: Manual install into the extensions folder
+
+```bash
+cd vscode-extension
+npm run compile
+mkdir -p ~/.vscode/extensions/gpu-monitor-0.1.6
+cp dist/extension.js package.json tsconfig.json dashboard.html ~/.vscode/extensions/gpu-monitor-0.1.6/
+```
+
+Then restart VS Code.
+
+### Using the Extension
+
+After installation, open the Command Palette (`Ctrl+Shift+P`) and run **GPU Monitor: Show Dashboard**. You can also configure the API URL and refresh interval in VS Code settings under **GPU Monitor**.
 
 ## Features
 
