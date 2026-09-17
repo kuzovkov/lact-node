@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 .vscode/**
 .vscode-test/**
 src/**
@@ -6,3 +7,11 @@ package-lock.json
 tsconfig.json
 *.vsix
 **/*.map
+=======
+node_modules
+src
+tsconfig.json
+*.vsix
+.vscode-test
+.gitignore
+>>>>>>> 534ccfa0ac0c9ffa3e925fd7ae80ba216c67b3cb
