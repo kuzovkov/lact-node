@@ -41,7 +41,9 @@ let currentPanel;
 let refreshTimer;
 let statusBar;
 let gpuTemp = '';
+let extVersion = '';
 function activate(context) {
+    extVersion = context.extension?.packageJSON?.version ?? '';
     statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBar.text = '$(monitor) GPU Monitor';
     statusBar.tooltip = 'Click to open GPU Monitor';
@@ -111,17 +113,30 @@ async function fetchGpuData(url) {
     }
 }
 function updateStatusBar(raw) {
-    const tempMatch = raw.match(/GPU:\s*(\d+)/i);
-    if (tempMatch) {
-        gpuTemp = tempMatch[1];
+    const readings = [];
+    const patterns = [
+        ['VRAM', /VRAM:\s*(\d+)/i],
+        ['GPU Hotspot', /GPU Hotspot:\s*(\d+)/i],
+        ['GPU', /GPU:\s*(\d+)/i],
+    ];
+    for (const [label, re] of patterns) {
+        const m = raw.match(re);
+        if (m)
+            readings.push({ label, value: parseInt(m[1], 10) });
+    }
+    if (readings.length) {
+        readings.sort((a, b) => b.value - a.value);
+        const highest = readings[0];
+        gpuTemp = String(highest.value);
+        const details = readings.map((r) => `${r.label}: ${r.value}°C`).join(' | ');
         statusBar.text = `$(monitor) ${gpuTemp}°C`;
-        statusBar.tooltip = `GPU Temp: ${gpuTemp}°C\nClick to open GPU Monitor`;
+        statusBar.tooltip = `Highest Temp: ${gpuTemp}°C\n${details}\nClick to open GPU Monitor`;
     }
 }
 function getHtmlForWebview(webview, apiUrl, refreshInterval) {
     const dashboardPath = path.join(__dirname, '..', 'dashboard.html');
     let html = fs.readFileSync(dashboardPath, 'utf-8');
-    html = html.replace('<script>', `<script>\nconst REFRESH_INTERVAL = ${refreshInterval};\nconst API_URL = '${apiUrl}';\n`);
+    html = html.replace('<script>', `<script>\nconst REFRESH_INTERVAL = ${refreshInterval};\nconst API_URL = '${apiUrl}';\nconst EXTENSION_VERSION = '${extVersion}';\n`);
     return html;
 }
 //# sourceMappingURL=extension.js.map
