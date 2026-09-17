@@ -5,15 +5,10 @@ import * as https from 'https';
 import * as http from 'http';
 
 let currentPanel: vscode.WebviewPanel | undefined;
-<<<<<<< HEAD
 let refreshTimer: NodeJS.Timeout | undefined;
 let statusBar: vscode.StatusBarItem;
 let gpuTemp: string = '';
 let extVersion: string = '';
-=======
-let refreshTimer: ReturnType<typeof setInterval> | undefined;
-let statusBar: vscode.StatusBarItem | undefined;
->>>>>>> 534ccfa0ac0c9ffa3e925fd7ae80ba216c67b3cb
 
 export function activate(context: vscode.ExtensionContext) {
   extVersion = context.extension?.packageJSON?.version ?? '';
@@ -119,7 +114,6 @@ function fetchGpuData(url: string): void {
 }
 
 function updateStatusBar(raw: string): void {
-<<<<<<< HEAD
   const readings: { label: string; value: number }[] = [];
   const patterns: [string, RegExp][] = [
     ['VRAM', /VRAM:\s*(\d+)/i],
@@ -137,13 +131,6 @@ function updateStatusBar(raw: string): void {
     const details = readings.map((r) => `${r.label}: ${r.value}°C`).join(' | ');
     statusBar.text = `$(monitor) ${gpuTemp}°C`;
     statusBar.tooltip = `Highest Temp: ${gpuTemp}°C\n${details}\nClick to open GPU Monitor`;
-=======
-  const tempMatch = raw.match(/GPU:\s*(\d+)/i);
-  if (tempMatch && statusBar) {
-    const temp = tempMatch[1];
-    statusBar.text = `$(cpu) ${temp}°C`;
-    statusBar.tooltip = `GPU Temp: ${temp}°C\nClick to open GPU Monitor`;
->>>>>>> 534ccfa0ac0c9ffa3e925fd7ae80ba216c67b3cb
   }
 }
 

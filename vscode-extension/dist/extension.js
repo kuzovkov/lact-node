@@ -42,11 +42,8 @@ const http = __importStar(require("http"));
 let currentPanel;
 let refreshTimer;
 let statusBar;
-<<<<<<< HEAD
 let gpuTemp = '';
 let extVersion = '';
-=======
->>>>>>> 534ccfa0ac0c9ffa3e925fd7ae80ba216c67b3cb
 function activate(context) {
     extVersion = context.extension?.packageJSON?.version ?? '';
     statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -133,7 +130,6 @@ function fetchGpuData(url) {
     });
 }
 function updateStatusBar(raw) {
-<<<<<<< HEAD
     const readings = [];
     const patterns = [
         ['VRAM', /VRAM:\s*(\d+)/i],
@@ -152,13 +148,6 @@ function updateStatusBar(raw) {
         const details = readings.map((r) => `${r.label}: ${r.value}°C`).join(' | ');
         statusBar.text = `$(monitor) ${gpuTemp}°C`;
         statusBar.tooltip = `Highest Temp: ${gpuTemp}°C\n${details}\nClick to open GPU Monitor`;
-=======
-    const tempMatch = raw.match(/GPU:\s*(\d+)/i);
-    if (tempMatch && statusBar) {
-        const temp = tempMatch[1];
-        statusBar.text = `$(cpu) ${temp}°C`;
-        statusBar.tooltip = `GPU Temp: ${temp}°C\nClick to open GPU Monitor`;
->>>>>>> 534ccfa0ac0c9ffa3e925fd7ae80ba216c67b3cb
     }
 }
 function getHtmlForWebview(webview, apiUrl, refreshInterval) {
