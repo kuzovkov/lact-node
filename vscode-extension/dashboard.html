@@ -15,6 +15,7 @@
   .header .status.online{color:#4caf50}
   .gpu-card{background:#252525;border:1px solid #333;border-radius:6px;padding:16px;margin-bottom:16px}
   .gpu-title{font-size:13px;color:#aaa;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #3a3a3a}
+  .gpu-id{color:#666;font-size:11px}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
   .stat{background:#2a2a2a;border-radius:4px;padding:10px 12px}
   .stat-label{color:#888;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px}
@@ -57,6 +58,8 @@
 <script>
 const vscode = acquireVsCodeApi();
 let autoRefreshId = null;
+let lastRawText = null;
+let infoGpus = null;
 
 (function initVersion() {
   const el = document.getElementById('extVersion');
@@ -73,7 +76,7 @@ function parseGpuData(raw) {
   let current = null;
   for (const line of raw.split('\n')) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed === '=====') continue;
+    if (!trimmed || /^=+$/.test(trimmed)) continue;
     const gpuMatch = trimmed.match(/^(GPU\s+\S+):$/);
     if (gpuMatch) {
       if (current) gpus.push(current);
@@ -81,6 +84,8 @@ function parseGpuData(raw) {
       continue;
     }
     if (current) {
+      const nameMatch = trimmed.match(/^(?:GPU Model|Device Name):\s*(.+)$/i);
+      if (nameMatch) { current.stats.deviceName = nameMatch[1].trim(); continue; }
       const clockMatch = trimmed.match(/GPU Clockspeed:\s*(\d+)\s*(MHz)/i);
       if (clockMatch) { current.stats.gpuClock = parseInt(clockMatch[1]); current.stats.gpuClockUnit = clockMatch[2]; continue; }
       const vramClockMatch = trimmed.match(/VRAM Clockspeed:\s*(\d+)\s*(MHz)/i);
@@ -126,6 +131,11 @@ function tempColor(val) {
   return '';
 }
 
+function gpuTitle(gpu) {
+  const name = gpu.stats && gpu.stats.deviceName;
+  return name ? `${name} <span class="gpu-id">${gpu.id}</span>` : gpu.id;
+}
+
 function renderGpus(gpus) {
   const container = document.getElementById('content');
   if (!gpus.length) {
@@ -139,7 +149,7 @@ function renderGpus(gpus) {
     const powerPct = s.powerLimit ? Math.round((s.powerUsage / s.powerLimit) * 100) : 0;
 
     html += `<div class="gpu-card">`;
-    html += `<div class="gpu-title">${gpu.id}</div>`;
+    html += `<div class="gpu-title">${gpuTitle(gpu)}</div>`;
     html += `<div class="grid">`;
 
     html += `<div class="stat"><div class="stat-label">GPU Clockspeed</div><div class="stat-value">${s.gpuClock||'\u2014'}<span class="stat-unit">${s.gpuClockUnit||'MHz'}</span></div></div>`;
@@ -178,9 +188,22 @@ function renderGpus(gpus) {
   container.innerHTML = html;
 }
 
+function mergeInfoNames(gpus) {
+  if (!infoGpus) return;
+  const names = {};
+  for (const g of infoGpus) {
+    if (g.stats.deviceName) names[g.id] = g.stats.deviceName;
+  }
+  for (const g of gpus) {
+    if (!g.stats.deviceName && names[g.id]) g.stats.deviceName = names[g.id];
+  }
+}
+
 function handleData(rawText) {
+  lastRawText = rawText;
   try {
     const gpus = parseGpuData(rawText);
+    mergeInfoNames(gpus);
     renderGpus(gpus);
     const dot = document.getElementById('statusDot');
     dot.textContent = 'Connected';
@@ -215,6 +238,9 @@ window.addEventListener('message', event => {
     handleData(msg.data);
   } else if (msg.type === 'error') {
     handleError(msg.message);
+  } else if (msg.type === 'info') {
+    infoGpus = parseGpuData(msg.data);
+    if (lastRawText !== null) handleData(lastRawText);
   } else if (msg.type === 'config') {
     startAutoRefresh();
   }

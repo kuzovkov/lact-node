@@ -4,9 +4,11 @@ VS Code extension for monitoring GPU statistics (temperatures, clocks, VRAM, pow
 
 ## Features
 
+- Monitors **all installed GPUs**: one card per GPU on the dashboard
 - Webview dashboard with per-GPU cards: clocks, voltage, power usage, temperatures, VRAM usage, throttling, fan speed
+- GPU model names in card titles when `/gpu/info` is available
 - Auto-refresh (configurable interval)
-- Status bar item showing the **highest** GPU temperature (usually GPU Hotspot)
+- Status bar item showing the **highest temperature across all GPUs**; hover for a per-GPU, per-sensor breakdown
 - Extension version displayed next to the "GPU Monitor" header
 
 ## Requirements
@@ -76,7 +78,7 @@ zip -r gpu-monitor-0.1.1.vsix . -x "node_modules/*" -x "src/*" -x "*.tsbuildinfo
 1. Make sure the LACT API is running (`lact-api` on port 3000 by default).
 2. Run the command **`GPU Monitor: Show Dashboard`** (or use the command palette: `Ctrl+Shift+P` → "GPU Monitor").
 3. The dashboard opens in a webview and auto-refreshes.
-4. The status bar (bottom right) shows the highest temperature, e.g. `📺 68°C`. Hover for a per-sensor breakdown.
+4. The status bar (bottom right) shows the highest temperature across all GPUs, e.g. `📺 68°C`. Hover for a per-GPU, per-sensor breakdown.
 
 ## Development
 

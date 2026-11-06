@@ -29,7 +29,7 @@ and the VS Code extension (`vscode-extension/`). All consume the raw text output
 
 | Path | Purpose | Language / Runtime |
 |------|---------|--------------------|
-| `lact-api/server.js` | Express API server; `GET /gpu/stat` shells out to `lact cli stats` and returns raw stdout | Node.js (CommonJS), Express 5 |
+| `lact-api/server.js` | Express API server; `GET /gpu/list`, `/gpu/info`, `/gpu/stat` shell out to `lact cli list|info|stats` and return raw stdout; stats/info aggregate one block per GPU (enumerates GPUs via `lact cli list`, re-runs per device with `-g <index>` when needed); `?id=<index or device id>` selects a single GPU | Node.js (CommonJS), Express 5 |
 | `lact-api/package.json` | API deps: `express` ^5, `cors` ^2 | — |
 | `lact-api/lact-api.service` | systemd unit template (User=root) | systemd ini |
 | `dashboard.html` | Styled GPU stats dashboard for the browser | Vanilla JS + HTML/CSS |
@@ -46,7 +46,7 @@ cd lact-api
 npm install
 npm start          # or: node server.js  → listens on http://127.0.0.1:3000
 ```
-Verify: `curl http://127.0.0.1:3000/gpu/stat`
+Verify: `curl http://127.0.0.1:3000/gpu/stat` (also `/gpu/list`, `/gpu/info`)
 
 ### VS Code extension
 ```bash
@@ -71,31 +71,44 @@ Unit file: `lact-api/lact-api.service` (template in repo; installed copy at
 `/etc/systemd/system/lact-api.service`). `ExecStart` uses the nvm node binary path
 (`/home/user1/.nvm/versions/node/v22.14.0/bin/node`) — update it if the node version changes.
 
-## The Critical Contract: raw `lact cli stats` text parsing
+## The Critical Contract: raw `lact cli` text parsing
 
-The API returns **raw stdout text** — there is no JSON schema. Example:
+The API returns **raw stdout text** — there is no JSON schema. `/gpu/stat` and
+`/gpu/info` may contain **multiple GPU blocks** (one per installed card), aggregated
+server-side. Stats example:
 
 ```
 GPU 10DE:2204-1462:3881-0000:03:00.0:
+=====================================
 GPU Clockspeed: 210 MHz
 VRAM Clockspeed: 405 MHz
 GPU Voltage: 725 mV
-Power Usage: 18.5/350 W
+Power Usage: 18.3/300 W
 Temperatures: GPU Hotspot: 57°C, GPU: 47°C, VRAM: 50°C
-VRAM Usage: 15875/24576 MiB
+VRAM Usage: 22402/24576 MiB
 Throttling: No
-Fan Speed: 0% (0 RPM)
-Fan Control Mode: Automatic
+Fan Speed: 24% (439 RPM)
+Fan Control Mode: Curve
 ```
+
+(`=====` separator lines follow each GPU header; `/gpu/info` blocks carry
+`GPU Model:` as the human-readable name.)
 
 This text is parsed by **regexes in three places** that must stay in sync:
 
-1. `dashboard.html` → `parseGpuData()` (root, browser dashboard)
+1. `dashboard.html` → `parseGpuData()` (root, browser dashboard; also parses `GPU Model:`
+   from `/gpu/info` to label cards)
 2. `vscode-extension/dashboard.html` → `parseGpuData()` (webview dashboard — keep identical to #1)
-3. `vscode-extension/src/extension.ts` → `updateStatusBar()` (`VRAM:`, `GPU Hotspot:`, `GPU:` patterns)
+3. `vscode-extension/src/extension.ts` → `updateStatusBar()` + `splitGpuBlocks()` (per-GPU
+   blocks; `VRAM:`, `GPU Hotspot:`, `GPU:` patterns; status bar shows max across all GPUs)
 
 If you change the parsing, change all three. GPU blocks are delimited by a line matching
-`/^GPU\s+\S+:$/`.
+`/^GPU\s+\S+:$/`. `lact cli list` is indexed, e.g.
+`0: 10DE:2204-1462:3881-0000:03:00.0 (NVIDIA GeForce RTX 3090) [Dedicated]`, parsed via
+`LIST_LINE_RE` in `server.js`. Only numeric GPU indexes (validated by `INDEX_RE`) are ever
+interpolated into shell commands; `?id=` device-id queries are resolved to an index
+against the list output (`DEVICE_ID_RE` is a shell-safe shape guard). If your lact build
+uses a different device-selection flag than `-g`, change `lactCmd()` in `server.js`.
 
 ## Extension ↔ Webview protocol
 
@@ -108,16 +121,19 @@ const API_URL = '<url>';
 const EXTENSION_VERSION = '<ver>';
 ```
 
-Messages: webview posts `{type:'fetch'}`; extension posts
-`{type:'data', data}` or `{type:'error', message}`.
+Messages: webview posts `{type:'fetch'}`; extension posts `{type:'data', data}`,
+`{type:'error', message}`, or `{type:'info', data}` (raw `lact cli info` text, polled
+every 30 s and used to label GPU cards with device names when stats lines lack them).
 Settings keys: `gpuMonitor.apiUrl` (default `http://127.0.0.1:3000/gpu/stat`),
 `gpuMonitor.refreshInterval` (default 2000 ms, clamped 1000–60000).
 
 ## Gotchas & Conventions
 
-- **Port 3000 is hardcoded** in `lact-api/server.js` line 5; CORS is wide open (`app.use(cors())`).
-- The API shells out with `exec('lact cli stats')` — the `lact` CLI must be on PATH
+- **Port 3000** is the default in `lact-api/server.js` line 5, overridable via the `PORT`
+  env var; CORS is wide open (`app.use(cors())`).
+- The API shells out with `exec('lact cli …')` — the `lact` CLI must be on PATH
   (and may need sudo for some operations; see RUNNING_AS_SERVICE.md troubleshooting).
+  Multi-GPU aggregation runs `lact cli list` then `lact cli -g <index> stats|info` per device.
 - `server.js` listens on all interfaces by default (no host in `app.listen`) — the
   README documents `127.0.0.1`; keep this in mind for security-sensitive changes.
 - The two `dashboard.html` files (root + extension) are separate copies; changes to the

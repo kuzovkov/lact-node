@@ -79,10 +79,14 @@ sudo systemctl disable lact-api
 ## Verify It Works
 
 ```bash
-curl http://127.0.0.1:3000/gpu/stat
+curl http://127.0.0.1:3000/gpu/list   # device ids of all installed GPUs
+curl http://127.0.0.1:3000/gpu/stat   # raw stats, one block per GPU
+curl http://127.0.0.1:3000/gpu/info   # raw info (device names), one block per GPU
 ```
 
-You should see GPU stats output from `lact cli stats`.
+You should see raw output from `lact cli list` / `lact cli stats` / `lact cli info`.
+On multi-GPU systems `/gpu/stat` and `/gpu/info` aggregate results from every GPU
+(via `lact cli list` + per-device `-d <id>` calls when needed).
 
 ## Troubleshooting
 
@@ -102,8 +106,9 @@ ls -la /home/user1/.nvm/versions/node/v22.14.0/bin/node
 
 ### Port 3000 already in use
 
-Either stop the conflicting process or change the port in `server.js`
-(line 5: `const port = 3000;`).
+Either stop the conflicting process or change the port: set the `PORT` environment
+variable (e.g. `Environment=PORT=8080` in the unit file) or edit `server.js`
+(line 5: `const port = Number(process.env.PORT) || 3000;`).
 
 ### lact command not found
 

@@ -1,8 +1,8 @@
 {
   "name": "gpu-monitor",
   "displayName": "GPU Monitor",
-  "description": "Monitor GPU stats in VS Code via LACT API",
-  "version": "0.1.6",
+  "description": "Monitor GPU stats (all installed GPUs) in VS Code via LACT API",
+  "version": "0.2.0",
   "engines": {
     "vscode": "^1.96.0"
   },
